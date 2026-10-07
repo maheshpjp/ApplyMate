@@ -1,0 +1,11 @@
+.env
+.env.*
+storage/
+logs/
+*.db
+__pycache__/
+.pytest_cache/
+.venv/
+tests/
+pytest-*.txt
+tmp_debug_*.py

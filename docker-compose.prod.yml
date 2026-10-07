@@ -1,0 +1,82 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: applymate
+      POSTGRES_USER: applymate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U applymate -d applymate"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - internal
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env.production}
+      DATABASE_URL: postgresql+psycopg://applymate:${POSTGRES_PASSWORD}@postgres:5432/applymate
+      CORS_ORIGINS: '["https://${APP_HOSTNAME:?Set APP_HOSTNAME in .env.production}"]'
+      ALLOWED_HOSTS: '["${APP_HOSTNAME:?Set APP_HOSTNAME in .env.production}"]'
+      BROWSER_HEADLESS: "true"
+      JOB_CHECK_INTERVAL_SECONDS: ${JOB_CHECK_INTERVAL_SECONDS:-300}
+      REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-30}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - resume_storage:/app/storage
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+
+  frontend:
+    build:
+      context: ./frontend
+      target: production
+      args:
+        VITE_API_BASE_URL: /api
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  postgres_data:
+  resume_storage:
+
+networks:
+  internal:
+    driver: bridge
